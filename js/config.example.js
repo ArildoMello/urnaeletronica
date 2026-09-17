@@ -1,0 +1,4 @@
+window.APP_CONFIG = {
+  appScriptUrl: 'COLE_A_URL_DA_IMPLANTACAO_AQUI',
+  voteAccessKey: 'ESCOLHA_UMA_CHAVE_SIMPLES_AQUI',
+};

@@ -1,0 +1,3 @@
+// Configure estas propriedades em Configurações do projeto > Propriedades do script.
+// SHEET_ID = o trecho entre /d/ e /edit/ na URL da sua Planilha Google.
+// VOTE_ACCESS_KEY = uma frase curta, não publicada no repositório.
