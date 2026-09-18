@@ -9,7 +9,7 @@ function doPost(event) {
       if (!['13', '22', 'branco', 'nulo'].includes(vote.kind)) {
         throw new Error('Tipo de voto inválido.');
       }
-      sheet.appendRow([new Date(), 'geral', vote.kind, String(vote.sessionId || '')]);
+      sheet.appendRow([new Date(), vote.mode === 'session' ? 'sessão' : 'geral', vote.kind, String(vote.sessionId || '')]);
       return json_({ ok: true });
     }
 

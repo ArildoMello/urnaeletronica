@@ -42,9 +42,9 @@ test('sends one complete general vote to the configured script endpoint', async 
     },
   });
 
-  await api.registerVote({ kind: '13', sessionId: 'session-a' });
+  await api.registerVote({ kind: '13', sessionId: 'session-a', mode: 'session' });
   assert.deepEqual(received, {
-    action: 'registrarVoto', key: 'shared-key', vote: { kind: '13', sessionId: 'session-a' },
+    action: 'registrarVoto', key: 'shared-key', vote: { kind: '13', sessionId: 'session-a', mode: 'session' },
   });
 });
 

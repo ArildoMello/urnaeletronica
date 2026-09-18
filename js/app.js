@@ -32,6 +32,7 @@ let pending = null;
 const $ = selector => document.querySelector(selector);
 const show = view => {
   document.querySelectorAll('.view').forEach(el => el.classList.toggle('active', el.id === view));
+  if (view === 'algorithm') startTerminal();
 };
 const setMessage = text => $('#message').textContent = text;
 const setDigits = () => {
@@ -44,21 +45,20 @@ const setDigits = () => {
 };
 const reset = () => { digits = ''; pending = null; setDigits(); };
 const recordsForMode = async () => {
-  if (mode === 'session') return store.all();
-  if (!api) throw new Error('A votação geral ainda não foi configurada.');
-  return (await api.getAudit()).records;
+  if (!api) throw new Error('A planilha de votos não está configurada.');
+  const records = (await api.getAudit()).records;
+  return mode === 'session' ? records.filter(vote => vote.sessionId === sessionId) : records;
 };
 const label = kind => ({ '13': '13 — Lula', '22': '22 — Bolsonaro', branco: 'Branco', nulo: 'Nulo' }[kind] || kind);
 async function confirm() {
   const ballot = pending || (digits ? classifyBallot(digits) : null);
   if (!ballot) return setMessage('Digite um número ou escolha BRANCO.');
-  const vote = { kind: ballot.kind, sessionId };
+  const vote = { kind: ballot.kind, sessionId, mode };
   setMessage('Registrando voto...');
   try {
-    if (mode === 'session') store.add(vote); else {
-      if (!api) throw new Error('Configure js/config.js para ativar a votação geral.');
-      await api.registerVote(vote);
-    }
+    if (!api) throw new Error('A planilha de votos não está configurada.');
+    await api.registerVote(vote);
+    store.add(vote);
     new Audio('./assets/Som de Urna Eletrônica.mp3').play().catch(() => {});
     setMessage('VOTO CONFIRMADO ✓');
     reset();
@@ -74,9 +74,11 @@ async function audit() {
 }
 async function result() {
   try {
-    const votes = await recordsForMode();
-    const shown = simulateResult(countBallots(votes));
-    $('#result-content').innerHTML = `<div class="result-grid"><div class="result-card"><span>13 — Lula</span><strong>${shown['13']}</strong></div><div class="result-card"><span>22 — Bolsonaro</span><strong>${shown['22']}</strong></div><div class="result-card"><span>Branco</span><strong>${shown.branco}</strong></div><div class="result-card"><span>Nulo</span><strong>${shown.nulo}</strong></div></div><p><b>Total de votos: ${shown.total}</b></p><p>Resultado simulado para fins de brincadeira.</p>`;
+    if (!api) throw new Error('A planilha de votos não está configurada.');
+    const allVotes = (await api.getAudit()).records;
+    const sessionVotes = allVotes.filter(vote => vote.sessionId === sessionId);
+    const panel = (title, votes) => { const shown = simulateResult(countBallots(votes)); return `<section class="result-panel"><h3>${title}</h3><div class="result-grid"><div class="result-card"><span>13 — Lula</span><strong>${shown['13']}</strong></div><div class="result-card"><span>22 — Bolsonaro</span><strong>${shown['22']}</strong></div><div class="result-card"><span>Branco</span><strong>${shown.branco}</strong></div><div class="result-card"><span>Nulo</span><strong>${shown.nulo}</strong></div></div><p><b>Total: ${shown.total}</b></p></section>`; };
+    $('#result-content').innerHTML = `<style>.result-columns{display:grid;grid-template-columns:1fr 1fr;gap:20px}.result-panel{border:1px solid #d6dde3;border-radius:9px;padding:14px}.result-panel h3{margin-top:0;font-size:18px}@media(max-width:620px){.result-columns{grid-template-columns:1fr}}</style><div class="result-columns">${panel('Minha sessão online', sessionVotes)}${panel('Apuração geral no Google', allVotes)}</div><p>Resultado simulado para fins de brincadeira.</p>`;
     $('#result-dialog').showModal();
   } catch (error) { setMessage(error.message); }
 }
@@ -84,7 +86,7 @@ document.addEventListener('click', event => {
   const button = event.target.closest('button'); if (!button) return;
   if (button.dataset.view) return show(button.dataset.view);
   if (button.dataset.key && digits.length < 2) { digits += button.dataset.key; setDigits(); return; }
-  if (button.dataset.mode) { mode = button.dataset.mode; document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('selected', b === button)); $('#mode-status').textContent = mode === 'session' ? 'Recomeça ao abrir/recarregar.' : api ? 'Compartilhada pela Planilha Google.' : 'Planilha geral ainda não configurada.'; reset(); return; }
+  if (button.dataset.mode) { mode = button.dataset.mode; document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('selected', b === button)); $('#mode-status').textContent = mode === 'session' ? 'Votos desta sessão também ficam na Planilha.' : 'Todos os votos ficam na Planilha Google.'; reset(); return; }
   if (button.dataset.action === 'blank') { pending = classifyBallot('branco'); $('#digits').textContent = '__'; $('#candidate').innerHTML = '<p>VOTO EM BRANCO</p>'; return; }
   if (button.dataset.action === 'clear') return reset();
   if (button.dataset.action === 'confirm') return confirm();
@@ -97,5 +99,33 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Enter') confirm();
   if (event.key === 'Backspace') reset();
 });
+let terminalTimer;
+function startTerminal() {
+  if (terminalTimer) return;
+  const terminal = document.querySelector('.terminal');
+  terminal.innerHTML = '<div id="code-stream"></div><span class="cursor">_</span>';
+  const stream = document.querySelector('#code-stream');
+  const snippets = [
+    ['C#', 'if (resultado == resultado) { Console.WriteLine("normal?"); }'],
+    ['Python', 'while votos < votos: votos += banana'],
+    ['Java', 'public static void corrigirTudo() { /* ops */ }'],
+    ['Ruby', 'resultado.reverse! if resultado.ficou_serio?'],
+    ['PHP', '$urna = $urna ?? "foi sem querer";'],
+    ['C', 'char* recado = "ops. Chandão, não deixa isso...";'],
+    ['BUG', 'ERRO 0xBANANA: apaga isso, esquece o que eu... ops.'],
+    ['OK', 'a agora sim! modo_trote = true;']
+  ];
+  let line = 0, char = 0, deleting = false, wait = 0;
+  terminalTimer = setInterval(() => {
+    const [language, code] = snippets[line];
+    if (wait > 0) { wait -= 1; return; }
+    const text = code.slice(0, char);
+    stream.innerHTML = `<p class="code-line ${language === 'BUG' ? 'glitch' : language === 'OK' ? 'comic' : ''}">[${language}] ${text}</p>` + stream.innerHTML.split('</p>').slice(0, 8).join('</p>');
+    if (!deleting && char < code.length) char += 1;
+    else if (!deleting) { wait = 14; deleting = true; }
+    else if (char > 0) char -= 2;
+    else { deleting = false; line = (line + 1) % snippets.length; wait = 4; }
+  }, 35);
+}
 setDigits();
 })();
